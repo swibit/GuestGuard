@@ -29,7 +29,8 @@ You can use GuestGuard with a pre-prepared CSV file containing email addresses (
    
    ```bash
    python guestguard.py --csv 'sample_data/input.csv' --outputmode 'html' --outputname 'test.html' --analysis 'detailed'
-```
+   ````
+
 3. Review the generated HTML/CSV output and take necessary actions based on the findings.
 
 ##  Future potential improvements
