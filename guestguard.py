@@ -77,16 +77,45 @@ def delete_portfolio(portfolio_id):
     print("Temporary portfolio deleted.")
     return True
 
-# Function to add collected domains to temporary portfolio
+# Function to convert enriched JSON data to CSV, including handling of detailed factors if analysis detailed is used
 def json_object_to_csv(json_data, csv_file):
-    print(f"Converting JSON data to CSV file: {csv_file}")
     if not json_data:
         print("JSON data is empty")
         return
+
+    # Flatten the data and extract detailed factors into their own columns
+    flattened_data = []
+    for row in json_data:
+        # Create a base dictionary with the non-factor fields
+        flattened_row = {
+            "Domain": row.get("Domain", "N/A"),
+            "Name": row.get("Name", "N/A"),
+            "Industry": row.get("Industry", "N/A"),
+            "Company Size": row.get("Company Size", "N/A"),
+            "Score": row.get("Score", "N/A"),
+            "Grade": row.get("Grade", "N/A"),
+            "Email Count": row.get("Email Count", 0)
+        }
+
+        # Add detailed factors (if available) as separate columns
+        if "Detailed Factors" in row:
+            for i, factor in enumerate(row["Detailed Factors"]):
+                flattened_row[f"Factor {i+1} Name"] = factor.get("name", "N/A")
+                flattened_row[f"Factor {i+1} Score"] = factor.get("score", "N/A")
+
+        flattened_data.append(flattened_row)
+
+    # Write the flattened data to CSV
     with open(csv_file, 'w', newline='', encoding='utf-8') as csv_f:
-        writer = csv.DictWriter(csv_f, fieldnames=json_data[0].keys())
+        # Use DictWriter to write dictionaries to CSV
+        fieldnames = flattened_data[0].keys()  # Get the headers from the first row
+        writer = csv.DictWriter(csv_f, fieldnames=fieldnames)
+        
+        # Write the header
         writer.writeheader()
-        writer.writerows(json_data)
+        
+        # Write the rows
+        writer.writerows(flattened_data)
 
     print(f"CSV file saved to {csv_file}")
 
