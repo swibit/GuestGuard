@@ -1,0 +1,3 @@
+domain,uuid,name,score,added_date,grade,grade_url,last30days_score_change,industry,size,email_count
+aviva.com,6b9610ad-af72-5f45-a56a-58317678b00a,Aviva,92,2025-05-02T10:35:33.049Z,A,https://s3.amazonaws.com/ssc-static/grades/factor_a.svg,-1,financial_services,size_more_than_10000,1
+barclays.co.uk,93b2d3a4-ce47-53ef-8707-06057b20e18d,Barclays,88,2025-05-02T10:35:33.049Z,B,https://s3.amazonaws.com/ssc-static/grades/factor_b.svg,0,financial_services,size_more_than_10000,2

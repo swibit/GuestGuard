@@ -23,14 +23,15 @@ def get_guest_users_from_csv(file_path):
 def get_domain(email):
     return email.split('@')[-1].lower()
 
-# Function to convert email list to domain list
-def get_domains(emails):
-    domains = set()
-    for email in emails: 
-        domains.add(get_domain(email))
-    return list(domains)
-   
-# Function to create a portfolio
+# Function to convert email list to domain list including volumes that each domain appears
+def get_domains_with_counts(emails):
+    domain_counts = defaultdict(int)
+    for email in emails:
+        domain = get_domain(email)
+        domain_counts[domain] += 1
+    return domain_counts
+
+# Function to create a portfolio - temporarily done to avoid a 403 error when looking up company data
 def create_portfolio(portfolio_name):
     url = "https://api.securityscorecard.io/portfolios"
 
@@ -46,12 +47,13 @@ def create_portfolio(portfolio_name):
     else:
         print(f"Failed to create portfolio: {response.text}")
         return None
-    
+
+# Function to add collected domains to temporary portfolio - temporarily done to avoid a 403 error when looking up company data
 def add_domains_to_portfolio(portfolio_id, domains):
     url = "https://api.securityscorecard.io/portfolios/companies/bulk-upload"
     payload = {
         "portfolios": [portfolio_id],
-        "companies": domains
+        "companies": list(domains.keys())
     }
     response = requests.put(url, json=payload, headers=headers)
 
@@ -62,16 +64,21 @@ def add_domains_to_portfolio(portfolio_id, domains):
         print(f"Failed to create portfolio: {response.text}")
         return None
 
+# Function to clear up temporary portfolio
 def delete_portfolio(portfolio_id):
     url = "https://api.securityscorecard.io/portfolios/"+portfolio_id
     response = requests.delete(url, headers=headers)
     response.raise_for_status()
     return True
 
-def json_object_to_csv(json_data, csv_file):
+# Function to add collected domains to temporary portfolio
+def json_object_to_csv(json_data, domain_counts, csv_file):
     if not json_data:
         print("JSON data is empty")
         return
+    for entry in json_data: 
+        domain = entry.get("domain","").lower()
+        entry['email_count'] = domain_counts.get(domain,0)
     with open(csv_file, 'w', newline='', encoding='utf-8') as csv_f:
         # Use DictWriter to write dictionaries to CSV
         writer = csv.DictWriter(csv_f, fieldnames=json_data[0].keys())
@@ -124,14 +131,17 @@ def main():
     args = parser.parse_args()
 
     emails = get_guest_users_from_csv(args.csv) 
-    domain_counts = defaultdict(int)
+    domain_counts = get_domains_with_counts(emails)
     portfolio = create_portfolio("GuestGuard")
-    if portfolio:
-        portfolio_id = portfolio['id']
-        domains = get_domains(emails)
-        add_domains_to_portfolio(portfolio_id, domains)
-        details=get_portfolio_details(portfolio_id)
-        json_object_to_csv(details,args.output)
+    if not portfolio:
+        Return 
+
+    portfolio_id = portfolio["id"]
+    try:
+        add_domains_to_portfolio(portfolio_id, domain_counts)
+        details = get_portfolio_details(portfolio_id)
+        json_object_to_csv(details, domain_counts, args.output)
+    finally:
         delete_portfolio(portfolio_id)
     
 

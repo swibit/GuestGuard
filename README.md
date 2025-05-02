@@ -10,9 +10,9 @@ Organisations increasingly collaborate with external users through Microsoft Ent
 GuestGuard helps organisations identify risky guest domains in their Entra tenant using SecurityScorecard's API, quantify their exposure, and take action on the most concerning third parties.
 
 ##  Key features:
-* Reads in a CSV of guest email users
-* Uses the SecurityScorecard API to evaluate each unique guest domain
-* Outputs a summary report with details including score, grade, industry, guest count per domain.
+* Reads in a CSV of guest email users downloaded via Entra/Azure portal or similar
+* Uses the SecurityScorecard API to evaluate each unique guest domain (temporarily creates a portfolio for this)
+* Outputs a summary report with details including score, grade, industry, and guest users per domain. 
 
 ##  How to use:
 You can either use this tool with a csv file already prepared of email accounts (downloaded via Entra portal/another source) or you can directly pull in data if you have an MS Graph API token. 
