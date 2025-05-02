@@ -3,8 +3,9 @@ import requests
 import argparse
 import csv
 from collections import defaultdict
+import time
 
-# Load API keys from file
+# Load API key from file
 with open("config.json") as f:
     config = json.load(f)
 
@@ -91,8 +92,6 @@ def json_object_to_csv(json_data, domain_counts, csv_file):
 
     print(f"CSV file saved to {csv_file}")
 
-
-
 # Function to get security scorecard domain score for a given domain 
 def get_portfolio_details(portfolio_id):
     url = "https://api.securityscorecard.io/portfolios/"+portfolio_id+"/companies"
@@ -127,15 +126,15 @@ def main():
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--csv', help="Path to CSV file with guest emails")
-    parser.add_argument('--output', default="results.csv", help="Output CSV file")
+    parser.add_argument('--domain-output', default="domain_results.csv", help="Output CSV file for domain summary report")
+    parser.add_argument('--pwned-output', default="pwned_results.csv", help="Output CSV file for HIBP email report")
     args = parser.parse_args()
 
     emails = get_guest_users_from_csv(args.csv) 
     domain_counts = get_domains_with_counts(emails)
     portfolio = create_portfolio("GuestGuard")
     if not portfolio:
-        Return 
-
+        return
     portfolio_id = portfolio["id"]
     try:
         add_domains_to_portfolio(portfolio_id, domain_counts)
