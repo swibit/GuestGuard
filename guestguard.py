@@ -83,10 +83,39 @@ def json_object_to_csv(json_data, csv_file):
         print("JSON data is empty")
         return
 
-    # Flatten the data and extract detailed factors into their own columns
     flattened_data = []
+    # Define the static (fixed) fieldnames in the desired order
+    fixed_fieldnames = [
+        "Domain", "Name", "Industry", "Company Size", "Score", "Grade", "Email Count"
+    ]
+    
+    # Start with the dynamic column names (for Factors, Incidents, and Breaches)
+    dynamic_fieldnames = []
+
+    # First pass: Analyze the structure and define the dynamic columns
     for row in json_data:
-        # Create a base dictionary with the non-factor fields
+        # For each row, track which dynamic columns we need
+        if "Detailed Factors" in row:
+            for i, factor in enumerate(row["Detailed Factors"]):
+                dynamic_fieldnames.append(f"Factor {i+1} Name")
+                dynamic_fieldnames.append(f"Factor {i+1} Score")
+        
+        if "Incidents" in row:
+            for i, incident in enumerate(row["Incidents"]):
+                dynamic_fieldnames.append(f"Incident {i+1} Description")
+                dynamic_fieldnames.append(f"Incident {i+1} Severity")
+        
+        if "Breaches" in row:
+            for i, breach in enumerate(row["Breaches"]):
+                dynamic_fieldnames.append(f"Breach {i+1} Date")
+                dynamic_fieldnames.append(f"Breach {i+1} Type")
+                dynamic_fieldnames.append(f"Breach {i+1} Link")
+    
+    # Combine fixed and dynamic fieldnames (preserving order)
+    fieldnames = fixed_fieldnames + dynamic_fieldnames
+
+    # Second pass: Flatten the data and prepare for CSV writing
+    for row in json_data:
         flattened_row = {
             "Domain": row.get("Domain", "N/A"),
             "Name": row.get("Name", "N/A"),
@@ -97,45 +126,37 @@ def json_object_to_csv(json_data, csv_file):
             "Email Count": row.get("Email Count", 0)
         }
 
-        # Add detailed factors (if available) as separate columns
+        # Add Detailed Factors
         if "Detailed Factors" in row:
             for i, factor in enumerate(row["Detailed Factors"]):
                 flattened_row[f"Factor {i+1} Name"] = factor.get("name", "N/A")
                 flattened_row[f"Factor {i+1} Score"] = factor.get("score", "N/A")
 
-        # Add incidents if available
+        # Add Incidents
         if "Incidents" in row:
             for i, incident in enumerate(row["Incidents"]):
                 flattened_row[f"Incident {i+1} Description"] = incident.get("description", "N/A")
                 flattened_row[f"Incident {i+1} Severity"] = incident.get("severity", "N/A")
 
+        # Add Breaches
+        if "Breaches" in row:
+            for i, breach in enumerate(row["Breaches"]):
+                flattened_row[f"Breach {i+1} Date"] = breach.get("date", "N/A")
+                flattened_row[f"Breach {i+1} Type"] = breach.get("event_type", "N/A")
+                flattened_row[f"Breach {i+1} Link"] = breach.get("link", "N/A")
+
+        # Append the row to the data
         flattened_data.append(flattened_row)
 
-    # Write the flattened data to CSV
+    # Third pass: Write the flattened data to CSV
     with open(csv_file, 'w', newline='', encoding='utf-8') as csv_f:
-        # Use DictWriter to write dictionaries to CSV
-        fieldnames = flattened_data[0].keys()  # Get the headers from the first row
         writer = csv.DictWriter(csv_f, fieldnames=fieldnames)
-        
-        # Write the header
         writer.writeheader()
-        
-        # Write the rows
-        writer.writerows(flattened_data)
 
-    print(f"CSV file saved to {csv_file}")
-
-    # Write the flattened data to CSV
-    with open(csv_file, 'w', newline='', encoding='utf-8') as csv_f:
-        # Use DictWriter to write dictionaries to CSV
-        fieldnames = flattened_data[0].keys()  # Get the headers from the first row
-        writer = csv.DictWriter(csv_f, fieldnames=fieldnames)
-        
-        # Write the header
-        writer.writeheader()
-        
-        # Write the rows
-        writer.writerows(flattened_data)
+        for row in flattened_data:
+            # Ensure all columns are filled (missing values will be filled with "N/A")
+            complete_row = {key: row.get(key, "N/A") for key in fieldnames}
+            writer.writerow(complete_row)
 
     print(f"CSV file saved to {csv_file}")
 
@@ -151,10 +172,29 @@ def get_incidents(domain):
     incidents = []
     for incident in incidents_json.get("entries", []):
         incidents.append({
-            "description": incident.get("description"),
+            "date": incident.get("description"),
             "severity": incident.get("severity")
         })
     return incidents
+
+# Function to get historical breaches for a given domain to provide context
+def get_breaches(domain):
+    print(f"Fetching breaches for domain: {domain}")
+    url = f"https://api.securityscorecard.io/companies/{domain}/history/events/breaches"
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        print(f"[WARN] Failed to get breaches for {domain}: {response.status_code}")
+        return []
+    breaches_json = response.json()
+    breaches = []
+    for breach in breaches_json.get("entries", []):
+        breach_data = breach.get("breach_data", {})
+        breaches.append({
+            "date": breach.get("date"),
+            "event_type": breach.get("event_type"),
+            "link": breach_data.get("link")
+        })
+    return breaches
 
 # Function to get summary security scorecard domain score for a given portfolio
 def get_portfolio_details(portfolio_id):
@@ -195,8 +235,8 @@ def get_detailed_factors(domain):
 
     return factors
 
-# Function to enrich portfolio domain detail with guest user counts. 
-def enrich_with_email_counts(details, domain_counts, analysis_level="basic"):
+# Function to enrich portfolio domain detail with guest user counts, as well as other detailed analysis if requested
+def enrich_portfolio(details, domain_counts, analysis_level="basic"):
     print(f"Enriching domain details with email counts. Analysis level: {analysis_level}")
     enriched = []
     for entry in details:
@@ -219,6 +259,10 @@ def enrich_with_email_counts(details, domain_counts, analysis_level="basic"):
             incidents = get_incidents(domain)
             if isinstance(incidents, list):  # ensure it's valid
                 enriched_row["Incidents"] = incidents
+
+            breaches = get_breaches(domain)
+            if isinstance(breaches, list):  # ensure it's valid
+                enriched_row["Breaches"] = breaches
 
         enriched.append(enriched_row)
     return enriched
@@ -265,6 +309,20 @@ def save_html_report(enriched_data, output_name):
                 )
             html += "</table></td></tr>"
 
+                    # Incidents section if available
+        if "Breaches" in row:
+            html += "<tr><td colspan='7'>"
+            html += "<h4>Breaches</h4>"
+            html += "<table style='margin-left: 20px;'>"
+            html += "<tr><th>Description</th><th>Severity</th></tr>"
+            for breach in row["Breaches"]:
+                html += "<tr><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+                    breach.get("date", "Unknown"),
+                    breach.get("event_type", "N/A"),
+                    breach.get("link", "N/A")
+                )
+            html += "</table></td></tr>"
+
     html += "</table></body></html>"
 
     with open(output_name, "w", encoding="utf-8") as f:
@@ -291,7 +349,7 @@ def main():
     try:
         add_domains_to_portfolio(portfolio_id, domain_counts)
         details = get_portfolio_details(portfolio_id)
-        enrich_details = enrich_with_email_counts(details, domain_counts, args.analysis)
+        enrich_details = enrich_portfolio(details, domain_counts, args.analysis)
         if args.outputmode == 'csv':
             json_object_to_csv(enrich_details, args.outputname)
         if args.outputmode == 'html':
