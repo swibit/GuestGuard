@@ -15,8 +15,9 @@ headers = {
         "Authorization": "Token "+SSC_API_KEY
     }
 
-# Function to get emails from csv file if provided - assumes that there is an 'email' columm
+# Function to get emails from csv file if provided - assumes that there is an 'email' column
 def get_guest_users_from_csv(file_path):
+    print(f"Loading guest emails from CSV file: {file_path}")
     with open(file_path, newline='') as f:
         return [row['email'] for row in csv.DictReader(f)]
     
@@ -26,6 +27,7 @@ def get_domain(email):
 
 # Function to convert email list to domain list including volumes that each domain appears
 def get_domains_with_counts(emails):
+    print(f"Counting email domains from a list of {len(emails)} emails")
     domain_counts = defaultdict(int)
     for email in emails:
         domain = get_domain(email)
@@ -34,11 +36,11 @@ def get_domains_with_counts(emails):
 
 # Function to create a portfolio - temporarily done to avoid a 403 error when looking up company data
 def create_portfolio(portfolio_name):
+    print(f"Creating portfolio: {portfolio_name}")
     url = "https://api.securityscorecard.io/portfolios"
-
     payload = {
         "name": portfolio_name,
-        "description": "Temporary ortfolio for guest users' domains"
+        "description": "Temporary portfolio for guest users' domains"
     }
 
     response = requests.post(url, headers=headers, json=payload)
@@ -51,6 +53,7 @@ def create_portfolio(portfolio_name):
 
 # Function to add collected domains to temporary portfolio - temporarily done to avoid a 403 error when looking up company data
 def add_domains_to_portfolio(portfolio_id, domains):
+    print(f"Adding domains to portfolio with ID {portfolio_id}")
     url = "https://api.securityscorecard.io/portfolios/companies/bulk-upload"
     payload = {
         "portfolios": [portfolio_id],
@@ -62,35 +65,34 @@ def add_domains_to_portfolio(portfolio_id, domains):
         print("Domains added to portfolio")
         return response.json()
     else:
-        print(f"Failed to create portfolio: {response.text}")
+        print(f"Failed to add domains: {response.text}")
         return None
 
 # Function to clear up temporary portfolio
 def delete_portfolio(portfolio_id):
+    print(f"Deleting temporary portfolio with ID {portfolio_id}")
     url = "https://api.securityscorecard.io/portfolios/"+portfolio_id
     response = requests.delete(url, headers=headers)
     response.raise_for_status()
+    print("Temporary portfolio deleted.")
     return True
 
 # Function to add collected domains to temporary portfolio
 def json_object_to_csv(json_data, csv_file):
+    print(f"Converting JSON data to CSV file: {csv_file}")
     if not json_data:
         print("JSON data is empty")
         return
     with open(csv_file, 'w', newline='', encoding='utf-8') as csv_f:
-        # Use DictWriter to write dictionaries to CSV
         writer = csv.DictWriter(csv_f, fieldnames=json_data[0].keys())
-        
-        # Write the header
         writer.writeheader()
-        
-        # Write the rows
         writer.writerows(json_data)
 
     print(f"CSV file saved to {csv_file}")
 
-# Function to get security scorecard domain score for a given domain 
+# Function to get summary security scorecard domain score for a given portfolio
 def get_portfolio_details(portfolio_id):
+    print(f"Fetching portfolio details for portfolio ID: {portfolio_id}")
     url = "https://api.securityscorecard.io/portfolios/"+portfolio_id+"/companies"
     r = requests.get(url, headers=headers)
     if r.status_code == 404:
@@ -98,8 +100,6 @@ def get_portfolio_details(portfolio_id):
     data = r.json()
     
     for entry in data['entries']:
-            # Extract the desired fields using .get() for safety
-            # Provides 'N/A' if a key is missing in a specific entry
         domain = entry.get('domain', 'N/A')
         uuid = entry.get('uuid', 'N/A')
         name = entry.get('name', 'N/A')
@@ -107,24 +107,35 @@ def get_portfolio_details(portfolio_id):
         grade = entry.get('grade', 'N/A')
         industry = entry.get('industry', 'N/A')
         size = entry.get('size', 'N/A')
-
-
-    # Print the extracted information for the current company
-        print(f"Domain: {domain}")
-        print(f"Name: {name}")
-        print(f"Name: {industry}")
-        print(f"Size: {size}")
-        print(f"Score: {score}")
-        print(f"Grade: {grade}")
-        print("-" * 20) # Print a separator line for readability
     return data['entries']
 
+# Function to get detailed factors for a given domain to provide more granular info
+def get_detailed_factors(domain):
+    print(f"Fetching detailed factors for domain: {domain}")
+    url = "https://api.securityscorecard.io/companies/"+domain+"/factors"
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        print(f"[WARN] Failed to get detailed scores for {domain}: {response.status_code}")
+        return {}
+    factors_json = response.json()
+    factors = []
+    for factor in factors_json.get("entries", []):
+        factors.append({
+            "name": factor.get("name"),
+            "score": factor.get("score"),
+            "grade": factor.get("grade"),
+            "grade_url": factor.get("grade_url")
+        })
+
+    return factors
+
 # Function to enrich portfolio domain detail with guest user counts. 
-def enrich_with_email_counts(details, domain_counts):
+def enrich_with_email_counts(details, domain_counts, analysis_level="basic"):
+    print(f"Enriching domain details with email counts. Analysis level: {analysis_level}")
     enriched = []
     for entry in details:
         domain = entry.get('domain', 'N/A').lower()
-        enriched.append({
+        enriched_row = {
             "Domain": domain,
             "Name": entry.get('name', 'N/A'),
             "Industry": entry.get('industry', 'N/A'),
@@ -132,94 +143,79 @@ def enrich_with_email_counts(details, domain_counts):
             "Score": entry.get('score', 'N/A'),
             "Grade": entry.get('grade', 'N/A'),
             "Email Count": domain_counts.get(domain, 0)
-        })
+        }
+
+        if analysis_level == 'detailed':
+            factor_scores = get_detailed_factors(domain)
+            if isinstance(factor_scores, list):  # ensure it's valid
+                enriched_row["Detailed Factors"] = factor_scores
+
+        enriched.append(enriched_row)
     return enriched
 
-def save_html_report(data, output_file):
-    html = """
-    <html>
-    <head>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            h2 { color: #333; }
-            table { border-collapse: collapse; width: 100%; }
-            th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; }
-            tr:nth-child(even) { background-color: #fafafa; }
-            .low-score { background-color: #ffe6e6; }  /* red for score < 70 */
-            .med-score { background-color: #fff5cc; }  /* yellow for score < 85 */
-        </style>
-    </head>
-    <body>
-        <h2>GuestGuard Domain Security Report</h2>
-        <table>
-            <tr>
-                <th>Domain</th>
-                <th>Organisation</th>
-                <th>Industry</th>
-                <th>Company Size</th>
-                <th>Score</th>
-                <th>Grade</th>
-                <th>Email Count</th>
-            </tr>
-    """
+# Function to save HTML report to file
+def save_html_report(enriched_data, output_name):
+    print(f"Saving HTML report to: {output_name}")
+    html = "<html><head><style>"
+    html += "table, th, td { border: 1px solid black; border-collapse: collapse; padding: 5px; }"
+    html += "th { background-color: #f2f2f2; }"
+    html += "</style></head><body>"
 
-    for row in data:
-        print(row)
-        score = int(row.get("Score", 0)) if str(row.get("Score")).isdigit() else 0
-        score_class = ""
-        if score < 70:
-            score_class = "low-score"
-        elif score < 85:
-            score_class = "med-score"
+    html += "<h2>Summary Report</h2>"
+    html += "<table>"
+    headers = ["Domain", "Name", "Industry", "Company Size", "Score", "Grade", "Email Count"]
+    html += "<tr>" + "".join(f"<th>{h}</th>" for h in headers) + "</tr>"
 
-        html += f"""
-            <tr class="{score_class}">
-                <td>{row['Domain']}</td>
-                <td>{row['Name']}</td>
-                <td>{row['Industry']}</td>
-                <td>{row['Company Size']}</td>
-                <td>{row['Score']}</td>
-                <td>{row['Grade']}</td>
-                <td>{row['Email Count']}</td>
-            </tr>
-        """
+    for row in enriched_data:
+        html += "<tr>" + "".join(f"<td>{row.get(h, 'N/A')}</td>" for h in headers) + "</tr>"
 
-    html += """
-        </table>
-    </body>
-    </html>
-    """
+        # Detailed factors section if available
+        if "Detailed Factors" in row:
+            html += "<tr><td colspan='7'>"
+            html += "<h4>Detailed Factors</h4>"
+            html += "<table style='margin-left: 20px;'>"
+            html += "<tr><th>Factor</th><th>Score</th></tr>"
+            for factor in row["Detailed Factors"]:
+                html += "<tr><td>{}</td><td>{}</td></tr>".format(
+                    factor.get("name", "Unknown"),
+                    factor.get("score", "N/A")
+                )
+            html += "</table></td></tr>"
 
-    with open(output_file, "w", encoding="utf-8") as f:
+    html += "</table></body></html>"
+
+    with open(output_name, "w", encoding="utf-8") as f:
         f.write(html)
-    print(f"HTML report saved to {output_file}")
+    print(f"HTML report saved to {output_name}")
 
 def main():
+    print("Starting the process...")
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--csv', help="Path to CSV file with guest emails")
     parser.add_argument('--outputname', default="results.csv", help="Output file name")
     parser.add_argument('--outputmode', default="csv", help="Specifies if HTML or CSV output")
+    parser.add_argument('--analysis', default='basic', help="Analysis level")
     args = parser.parse_args()
 
     emails = get_guest_users_from_csv(args.csv) 
     domain_counts = get_domains_with_counts(emails)
     portfolio = create_portfolio("GuestGuard")
     if not portfolio:
+        print("Exiting due to portfolio creation failure.")
         return
     portfolio_id = portfolio["id"]
     try:
         add_domains_to_portfolio(portfolio_id, domain_counts)
         details = get_portfolio_details(portfolio_id)
-        enrich_details = enrich_with_email_counts(details,domain_counts)
+        enrich_details = enrich_with_email_counts(details, domain_counts, args.analysis)
         if args.outputmode == 'csv':
             json_object_to_csv(enrich_details, args.outputname)
         if args.outputmode == 'html':
-            save_html_report(enrich_details, args.outputname)   
+            save_html_report(enrich_details, args.outputname)
     finally:
         delete_portfolio(portfolio_id)
-    
 
 if __name__ == "__main__":
     main()
+ 
