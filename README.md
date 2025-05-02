@@ -22,5 +22,5 @@ Step 1. Populate config.json file with API key(s) - example provided
 Step 2. Run 'guestguard.py' specifying arguments as required.
 
 ```python
-python guestguard.py --csv 'sample_data/input.csv' --outputmode 'html' --outputname 'test.html'
+python guestguard.py --csv 'sample_data/input.csv' --outputmode 'html' --outputname 'test.html' --analysis 'detailed'
 ```
