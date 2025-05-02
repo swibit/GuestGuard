@@ -73,13 +73,10 @@ def delete_portfolio(portfolio_id):
     return True
 
 # Function to add collected domains to temporary portfolio
-def json_object_to_csv(json_data, domain_counts, csv_file):
+def json_object_to_csv(json_data, csv_file):
     if not json_data:
         print("JSON data is empty")
         return
-    for entry in json_data: 
-        domain = entry.get("domain","").lower()
-        entry['email_count'] = domain_counts.get(domain,0)
     with open(csv_file, 'w', newline='', encoding='utf-8') as csv_f:
         # Use DictWriter to write dictionaries to CSV
         writer = csv.DictWriter(csv_f, fieldnames=json_data[0].keys())
@@ -122,12 +119,88 @@ def get_portfolio_details(portfolio_id):
         print("-" * 20) # Print a separator line for readability
     return data['entries']
 
+# Function to enrich portfolio domain detail with guest user counts. 
+def enrich_with_email_counts(details, domain_counts):
+    enriched = []
+    for entry in details:
+        domain = entry.get('domain', 'N/A').lower()
+        enriched.append({
+            "Domain": domain,
+            "Name": entry.get('name', 'N/A'),
+            "Industry": entry.get('industry', 'N/A'),
+            "Company Size": entry.get('size', 'N/A'),
+            "Score": entry.get('score', 'N/A'),
+            "Grade": entry.get('grade', 'N/A'),
+            "Email Count": domain_counts.get(domain, 0)
+        })
+    return enriched
+
+def save_html_report(data, output_file):
+    html = """
+    <html>
+    <head>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            h2 { color: #333; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            tr:nth-child(even) { background-color: #fafafa; }
+            .low-score { background-color: #ffe6e6; }  /* red for score < 70 */
+            .med-score { background-color: #fff5cc; }  /* yellow for score < 85 */
+        </style>
+    </head>
+    <body>
+        <h2>GuestGuard Domain Security Report</h2>
+        <table>
+            <tr>
+                <th>Domain</th>
+                <th>Organisation</th>
+                <th>Industry</th>
+                <th>Company Size</th>
+                <th>Score</th>
+                <th>Grade</th>
+                <th>Email Count</th>
+            </tr>
+    """
+
+    for row in data:
+        print(row)
+        score = int(row.get("Score", 0)) if str(row.get("Score")).isdigit() else 0
+        score_class = ""
+        if score < 70:
+            score_class = "low-score"
+        elif score < 85:
+            score_class = "med-score"
+
+        html += f"""
+            <tr class="{score_class}">
+                <td>{row['Domain']}</td>
+                <td>{row['Name']}</td>
+                <td>{row['Industry']}</td>
+                <td>{row['Company Size']}</td>
+                <td>{row['Score']}</td>
+                <td>{row['Grade']}</td>
+                <td>{row['Email Count']}</td>
+            </tr>
+        """
+
+    html += """
+        </table>
+    </body>
+    </html>
+    """
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"HTML report saved to {output_file}")
+
 def main():
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--csv', help="Path to CSV file with guest emails")
-    parser.add_argument('--domain-output', default="domain_results.csv", help="Output CSV file for domain summary report")
-    parser.add_argument('--pwned-output', default="pwned_results.csv", help="Output CSV file for HIBP email report")
+    parser.add_argument('--outputname', default="results.csv", help="Output file name")
+    parser.add_argument('--outputmode', default="csv", help="Specifies if HTML or CSV output")
     args = parser.parse_args()
 
     emails = get_guest_users_from_csv(args.csv) 
@@ -139,7 +212,11 @@ def main():
     try:
         add_domains_to_portfolio(portfolio_id, domain_counts)
         details = get_portfolio_details(portfolio_id)
-        json_object_to_csv(details, domain_counts, args.output)
+        enrich_details = enrich_with_email_counts(details,domain_counts)
+        if args.outputmode == 'csv':
+            json_object_to_csv(enrich_details, args.outputname)
+        if args.outputmode == 'html':
+            save_html_report(enrich_details, args.outputname)   
     finally:
         delete_portfolio(portfolio_id)
     

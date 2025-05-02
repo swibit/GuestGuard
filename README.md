@@ -12,15 +12,15 @@ GuestGuard helps organisations identify risky guest domains in their Entra tenan
 ##  Key features:
 * Reads in a CSV of guest email users downloaded via Entra/Azure portal or similar
 * Uses the SecurityScorecard API to evaluate each unique guest domain (temporarily creates a portfolio for this)
-* Outputs a summary report with details including score, grade, industry, and guest users per domain. 
+* Outputs a summary report in either CSV or HTML format with details including score, grade, industry, and guest users per domain. 
 
 ##  How to use:
-You can either use this tool with a csv file already prepared of email accounts (downloaded via Entra portal/another source) or you can directly pull in data if you have an MS Graph API token. 
+You can either use this tool with a csv file already prepared of email accounts (downloaded via Entra portal/another source). 
 
 Step 1. Populate config.json file with API key(s) - example provided 
 
 Step 2. Run 'guestguard.py' specifying arguments as required.
 
 ```python
-python guestguard.py --csv 'sample_data/input.csv' --output 'results.csv'
+python guestguard.py --csv 'sample_data/input.csv' --outputmode 'html' --outputname 'test.html'
 ```
