@@ -77,7 +77,7 @@ def delete_portfolio(portfolio_id):
     print("Temporary portfolio deleted.")
     return True
 
-# Function to convert enriched JSON data to CSV, including handling of detailed factors if analysis detailed is used
+# Function to convert enriched JSON data to CSV, including handling of detailed factors and incidents if analysis detailed is used
 def json_object_to_csv(json_data, csv_file):
     if not json_data:
         print("JSON data is empty")
@@ -103,6 +103,12 @@ def json_object_to_csv(json_data, csv_file):
                 flattened_row[f"Factor {i+1} Name"] = factor.get("name", "N/A")
                 flattened_row[f"Factor {i+1} Score"] = factor.get("score", "N/A")
 
+        # Add incidents if available
+        if "Incidents" in row:
+            for i, incident in enumerate(row["Incidents"]):
+                flattened_row[f"Incident {i+1} Description"] = incident.get("description", "N/A")
+                flattened_row[f"Incident {i+1} Severity"] = incident.get("severity", "N/A")
+
         flattened_data.append(flattened_row)
 
     # Write the flattened data to CSV
@@ -118,6 +124,37 @@ def json_object_to_csv(json_data, csv_file):
         writer.writerows(flattened_data)
 
     print(f"CSV file saved to {csv_file}")
+
+    # Write the flattened data to CSV
+    with open(csv_file, 'w', newline='', encoding='utf-8') as csv_f:
+        # Use DictWriter to write dictionaries to CSV
+        fieldnames = flattened_data[0].keys()  # Get the headers from the first row
+        writer = csv.DictWriter(csv_f, fieldnames=fieldnames)
+        
+        # Write the header
+        writer.writeheader()
+        
+        # Write the rows
+        writer.writerows(flattened_data)
+
+    print(f"CSV file saved to {csv_file}")
+
+# Function to get incidents for a given domain to provide context
+def get_incidents(domain):
+    print(f"Fetching incidents for domain: {domain}")
+    url = f"https://api.securityscorecard.io/companies/{domain}/incidents"
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        print(f"[WARN] Failed to get incidents for {domain}: {response.status_code}")
+        return []
+    incidents_json = response.json()
+    incidents = []
+    for incident in incidents_json.get("entries", []):
+        incidents.append({
+            "description": incident.get("description"),
+            "severity": incident.get("severity")
+        })
+    return incidents
 
 # Function to get summary security scorecard domain score for a given portfolio
 def get_portfolio_details(portfolio_id):
@@ -179,6 +216,10 @@ def enrich_with_email_counts(details, domain_counts, analysis_level="basic"):
             if isinstance(factor_scores, list):  # ensure it's valid
                 enriched_row["Detailed Factors"] = factor_scores
 
+            incidents = get_incidents(domain)
+            if isinstance(incidents, list):  # ensure it's valid
+                enriched_row["Incidents"] = incidents
+
         enriched.append(enriched_row)
     return enriched
 
@@ -208,6 +249,19 @@ def save_html_report(enriched_data, output_name):
                 html += "<tr><td>{}</td><td>{}</td></tr>".format(
                     factor.get("name", "Unknown"),
                     factor.get("score", "N/A")
+                )
+            html += "</table></td></tr>"
+
+        # Incidents section if available
+        if "Incidents" in row:
+            html += "<tr><td colspan='7'>"
+            html += "<h4>Incidents</h4>"
+            html += "<table style='margin-left: 20px;'>"
+            html += "<tr><th>Description</th><th>Severity</th></tr>"
+            for incident in row["Incidents"]:
+                html += "<tr><td>{}</td><td>{}</td></tr>".format(
+                    incident.get("description", "Unknown"),
+                    incident.get("severity", "N/A")
                 )
             html += "</table></td></tr>"
 
